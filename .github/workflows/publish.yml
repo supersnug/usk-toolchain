@@ -1,0 +1,59 @@
+name: Publish USK 2.80 toolchain
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-usk-2.80-toolchain
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      IMAGE: ghcr.io/supersnug/usk-toolchain:2.80
+    steps:
+      - name: Checkout toolchain recipe
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3.6.0
+        with:
+          persist-credentials: false
+
+      - name: Build and publish frozen toolchain
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker buildx build \
+            --platform linux/amd64 \
+            --secret id=bootstrap_ca,src=/etc/ssl/certs/ca-certificates.crt \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --tag "$IMAGE" \
+            --metadata-file "$RUNNER_TEMP/image-metadata.json" \
+            --push .
+
+      - name: Record immutable image reference
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          metadata = json.loads((Path(os.environ["RUNNER_TEMP"]) / "image-metadata.json").read_text())
+          digest = metadata["containerimage.digest"]
+          if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+              raise ValueError("Build did not return a valid image digest")
+          image = os.environ["IMAGE"].rsplit(":", 1)[0] + "@" + digest
+          print(image)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("## Frozen USK 2.80 toolchain\n\n```yaml\ncontainer:\n  image: " + image + "\n```\n")
+              summary.write("\nUse this digest, not the mutable `2.80` tag. Make the GHCR package public before anonymous pulls from `usk`.\n")
+          PY
