@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # The base image has no CA bundle. Supply one as a build secret only for
 # authenticated HTTPS installation; APT package signatures remain checked.
-RUN --mount=type=secret,id=bootstrap_ca,required=true \
+RUN --mount=type=secret,id=bootstrap_ca,mode=0444,required=true \
     printf '%s\n' \
       'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20240904T041204Z jammy main universe' \
       'deb [check-valid-until=no] https://snapshot.ubuntu.com/ubuntu/20240904T041204Z jammy-updates main universe' \
